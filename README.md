@@ -123,7 +123,7 @@ LX800 主控是新唐 **N32905 / W55FA93**（ARM926EJ-S + 8MB DDR），程序**�
 
 > ⚠️ **常见误判**：烧错固件后芯片跑飞 → D+ 无上拉 → **D+ 实测 0V**，看起来像"供电坏了 /
 > USB 线断了 / 焊接失败"。实测证伪：量的 D+ 确实是 0V，但 UART 打不出
-> `SPI Booting Success`，才定位到是 **ExeAddr 填错**，不是硬件问题。别急着动烙铁。
+> `SPI Booting Success`，才定位到是固件没正确加载，不是硬件问题。别急着动烙铁。
 
 ### 所需软件
 
@@ -143,7 +143,7 @@ LX800 主控是新唐 **N32905 / W55FA93**（ARM926EJ-S + 8MB DDR），程序**�
 |---|---|---|
 | **`firmware/make_fix.bin`** | 589,824 | `fc7ed1c4efa6eac29fd37ca9ef43f505c7a7e36fd3aab015a600e7b1fcf4b206` |
 
-烧录时**只选这一个文件**。不要拿官方升级器里的镜像、或 Make Rom 的中间产物直接烧。
+烧录时**只选这一个文件**，不要拿官方升级器里的镜像或其它来源的固件直接烧。
 
 > **关于序列号**：`make_fix.bin` 里能搜到一串 `A247392SS000000`（偏移 `0x27ED4`，紧跟
 > `load eeprom faild` 之后）。这是**官方固件里硬编码的出厂默认序列号**，官方升级器里的原始镜像
@@ -164,34 +164,20 @@ LX800 主控是新唐 **N32905 / W55FA93**（ARM926EJ-S + 8MB DDR），程序**�
 
    > ⚠️ 短接前先对照实物确认引脚位置（不同批次板卡丝印与摆放朝向可能不同），**不要短接 VCC 与 GND**。
 3. 解压工具包，运行 `TurboWriter V2.30.003_N329x1\TurboWriter.exe`。
-4. 模式选 **SPI (Raw Data)** —— 按原样写文件，**不加任何头**。选错会直接毁掉 IBR 头。
+4. 模式选 **SPI (Raw Data)** —— 按原样写文件，**不加任何头**。
 5. Image 选 `firmware\make_fix.bin`（589,824 B = 576 KB）。
 6. 设备掉线 → 点 **Reset Chip**，或重新插拔后再连。
 7. 点 **Burn** → 出现 **`Burn successfully`**。
 8. **断开短接**，重新上电 → 枚举回 **`1A2C:151D`**，屏幕亮。
 
 全程**不需要 CH340 / 串口**。接了串口的话，成功标志是 UART 打印
-`SPI Booting Success ExeAddr 0x00100000`；失败是 `SPI Booting Fail - Not For Boot`。
+`SPI Booting Success`；失败是 `SPI Booting Fail - Not For Boot`。
 
-### 唯一的坑：ExeAddr 必须是 `0x00100000`
+### 烧录模式别选错
 
-`make_fix.bin` 头 24 字节是 Make Rom 生成的 IBR Boot Header：
-
-```
-+0x00 : A5 5A 42 57       magic
-+0x04 : 00 00 10 00       ExeAddr  ← 必须是 0x00100000
-+0x08 : E5 2C 08 00
-+0x0C : 57 42 5A A5       magic 尾
-+0x10 : 10 10 00 00       配置字 1
-+0x14 : 00 88 88 00       配置字 2
-```
-
-V75 镜像内部的指针表以 `0x100000` 为基址（`0x173C14` 这类都是绝对地址）。
-若按 TurboWriter 默认值填成 **`0x00180000`**，所有跳转整体错位 → 芯片跑飞 → D+ 无上拉 →
-表现成「不亮也不识别」。这是整个救砖过程**卡得最久、也唯一真正致命**的一个点。
-
-用 Make Rom 自己生成时注意：Image Name **≤ 8 字符**（先复制成短名 `v75.bin` 再选）；
-execute address **不带 `0x` 前缀**，填 `100000`；Type 选 **System Image**；start bank = `0`。
+`make_fix.bin` 已经带好正确的启动头，**用 TurboWriter 的「SPI (Raw Data)」按原样烧即可**，
+不要再让工具额外打包或加头。也不要拿官方升级器里的裸镜像、或其它来源的固件直接烧 ——
+加载地址对不上就会表现为「不亮也不识别」，遇到这种情况重跑一遍上面的步骤就能恢复。
 
 ### 救砖之后
 
