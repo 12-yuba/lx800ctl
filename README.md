@@ -8,7 +8,7 @@ TCOMAS LX800 水冷屏（**480×480 圆形 LCD**，`VID:PID = 1A2C:151D`）的�
 
 ## 为什么做这个
 
-官方软件能跑，但它把一家产品线（水冷屏 / 风扇毂 / 控制盒 / 键鼠）全塞进一个 exe，还自带 300MB 内置素材和一份 72MB 的 debug 版 OpenCV。
+官方软件能跑，但它把一家产品线（水冷屏 / 风扇 / 控制盒 / 键鼠）全塞进一个 exe，还自带 300MB 内置素材和一份 72MB 的 debug 版 OpenCV。
 
 | | 本软件 | 官方软件 | 差距 |
 |---|---|---|---|
@@ -18,7 +18,7 @@ TCOMAS LX800 水冷屏（**480×480 圆形 LCD**，`VID:PID = 1A2C:151D`）的�
 | 内核驱动 | **0 个** | **5 个**（含已被微软标记的 WinRing0） | — |
 | 管理员权限 | 安装、自启**都不需要** | 需要 | — |
 
-实测内存：空闲约 **95 MB**，GIF 推流峰值约 **200 MB**（开启 LHM 温度模式时额外 +80 MB）。
+实测内存：空闲约 **95 MB**；**全部功能开满**（GIF 推流 + LHM 温度模式）峰值约 **200 MB**。
 
 ---
 
@@ -48,7 +48,7 @@ TCOMAS LX800 水冷屏（**480×480 圆形 LCD**，`VID:PID = 1A2C:151D`）的�
 | 选项 | 原理 | 开销 | 需要管理员 |
 |---|---|---|---|
 | **系统热区 · 免驱动**（默认） | Windows 性能计数器读 ACPI 热区 | **0** | **不需要** |
-| **LHM · 高精度** | LibreHardwareMonitor 读 CPU 核心 Tctl/Tdie | +80 MB（独立子进程） | 需要 |
+| **LHM · 高精度** | LibreHardwareMonitor 读 CPU 核心 Tctl/Tdie | 独立子进程，**已计入上面 200 MB 峰值** | 需要 |
 | 关闭 | — | 0 | — |
 
 LHM 模式走 **PawnIO 签名驱动**，**不含**已被微软标记的 WinRing0。
@@ -100,3 +100,110 @@ SHA256  23105808736126eb6ac0e6faf12cb7184603f110215486037d1dda0ef5b0d788
 - [hidapi](https://github.com/libusb/hidapi) / [Pillow](https://python-pillow.org/) / [psutil](https://github.com/giampaolo/psutil) / [pynvml](https://github.com/gpuopenanalytics/pynvml)
 
 TCOMAS、LX800 为泰坦（tcomas.cn）的商标，本项目与之无关联，仅供学习交流。
+
+---
+
+## 附录：救砖工具包 · 固件烧录（屏幕已变砖才需要看）
+
+> **判断标准**：插上 USB 屏幕不亮、设备管理器里**没有** `1A2C:151D` → 才需要这一节。
+> 只要屏幕还能正常枚举 `1A2C:151D`，用不到这里的东西，直接用上面的上位机就行。
+
+### 救砖依据：为什么会砖，为什么救得回来
+
+LX800 主控是新唐 **N32905 / W55FA93**（ARM926EJ-S + 8MB DDR），程序**不在 MCU 内部 Flash**，
+而是放在板载 **16MB SPI NOR**（JEDEC ID `A1 40 18`，丝印 H25H128AE 系列）里，上电从 NOR 加载。
+
+「烧录开机动画」本质是往 NOR 偏移 **`0x400000`** 的动画库区写数据。只要写进去的 blob
+**任何一处格式不对**（帧数编码、索引表字段、meta 校验值），芯片上电加载动画库时就会跑飞 ——
+表现为屏幕不亮、USB 不枚举、上位机连不上。
+
+**能救回来的原因**：BootROM 固化在芯片里，擦不掉。只要让芯片进 BootROM 刷机态
+（USB `VID_0416&PID_9396`，USB Mass Storage 类），就能把固件重新烧回去。
+下面这套步骤是**实机跑通过的**，不是推测。
+
+> ⚠️ **常见误判**：烧错固件后芯片跑飞 → D+ 无上拉 → **D+ 实测 0V**，看起来像"供电坏了 /
+> USB 线断了 / 焊接失败"。实测证伪：量的 D+ 确实是 0V，但 UART 打不出
+> `SPI Booting Success`，才定位到是 **ExeAddr 填错**，不是硬件问题。别急着动烙铁。
+
+### 所需软件
+
+| 用途 | 软件 / 文件 | 来源 |
+|---|---|---|
+| SPI NOR 烧录器 | **TurboWriter V2.30.003_N329x1** | 新唐官方开源工具 [OpenNuvoton/N32905_NonOS_Tool](https://github.com/OpenNuvoton/N32905_NonOS_Tool) |
+| NOR 型号识别补丁 | `SPIFLASH ID.ini` 第 7 行加 `A14018　　16384` | **已打好**，包内自带 |
+| 救砖固件 | `firmware/make_fix.bin`（589,824 B） | 包内自带 |
+| （可选）串口日志 | CH340 + 板载 TX/RX/GND，**115200**，不接 VCC | 只在排查时用，正常救砖不需要 |
+
+打包文件：**`LX800_Rescue_Tool_v1.0.zip`（1.34 MB）**，在 [Releases](../../releases/latest) 里与安装器并列下载。
+包内已剔除 `log.txt`（含本机 USB 设备枚举记录）与 `path.ini` / `mkrom/`（含本机 `D:\` 绝对路径）。
+
+> 同工具包里还有 `N329x3 / N329x5 / N329x6 / N32905x3DN / N32926U6DN` 等版本，是给其它芯片的
+> （部分是 SDRAM-only），**对 LX800 无效**。包内只保留了实测可用的 `N329x1`。
+
+### 固件文件
+
+| 文件 | 大小 | SHA256 | 能直接烧吗 |
+|---|---|---|---|
+| **`firmware/make_fix.bin`** | 589,824 | `fc7ed1c4efa6eac29fd37ca9ef43f505c7a7e36fd3aab015a600e7b1fcf4b206` | ✅ **能，就用这个** |
+| `make.bin`（未打包） | 589,824 | `03fb6a3de644f4f87b05edbf06c1e5d4d3ac3ebfee6edacd1faffcc4ea38d2ea` | ❌ **必砖**，ExeAddr 错写成 `0x00180000` |
+| `lx800_v75_nor_sys.bin`（未打包） | 535,781 | `4479b4dd69476a46a20ead73b798ba6994c35774f9627fb0a7a3bf02fdfda8f0` | ❌ 官方原始 ARM 镜像，**没有 IBR 头**，直接烧必砖 |
+
+官方原始镜像出处：官方升级器 `TCOMAS_LX800_2.8寸_480x480_V75_20250815.exe`（3,825,136 B），
+ARM 向量表扫描法提取（连续 8×4B 且第 4 字节全 `0xEA`，命中于 exe 偏移 **`0x1C1708`**），
+镜像内 `0x11223344` 是厂商 magic。本包不含该升级器，请自行从官方渠道获取。
+
+> **关于序列号**：`make_fix.bin` 里能搜到一串 `A247392SS000000`（偏移 `0x27ED4`，紧跟
+> `load eeprom faild` 之后）。这是**官方固件里硬编码的出厂默认序列号**，原始官方镜像里同样存在，
+> **不是某台机器的私有数据**，可以放心分发。
+
+### 固件烧录步骤（实机跑通，约 5 分钟）
+
+1. **屏幕断电。**
+2. **让芯片进 BootROM 刷机态**（二选一）：
+   - 短接 NOR 的 **CS 与 VCC** —— 实机做法：CS-VCC 之间飞线接一个小开关，闭合 = 强制刷机态，
+     断开 = 正常运行，之后救砖不用反复插拔；
+   - 或把 NOR 全片擦除后插 USB。
+   插上 USB，设备管理器应出现 **`0416:9396`**（USB 大容量存储设备）。
+3. 解压工具包，运行 `TurboWriter V2.30.003_N329x1\TurboWriter.exe`。
+4. 模式选 **SPI (Raw Data)** —— 按原样写文件，**不加任何头**。选错会直接毁掉 IBR 头。
+5. Image 选 `firmware\make_fix.bin`（589,824 B = 576 KB）。
+6. 设备掉线 → 点 **Reset Chip**，或重新插拔后再连。
+7. 点 **Burn** → 出现 **`Burn successfully`**。
+8. **断开 CS-VCC**，重新上电 → 枚举回 **`1A2C:151D`**，屏幕亮。
+
+全程**不需要 CH340 / 串口**。接了串口的话，成功标志是 UART 打印
+`SPI Booting Success ExeAddr 0x00100000`；失败是 `SPI Booting Fail - Not For Boot`。
+
+### 唯一的坑：ExeAddr 必须是 `0x00100000`
+
+`make_fix.bin` 头 24 字节是 Make Rom 生成的 IBR Boot Header：
+
+```
++0x00 : A5 5A 42 57       magic
++0x04 : 00 00 10 00       ExeAddr  ← 必须是 0x00100000
++0x08 : E5 2C 08 00
++0x0C : 57 42 5A A5       magic 尾
++0x10 : 10 10 00 00       配置字 1
++0x14 : 00 88 88 00       配置字 2
+```
+
+V75 镜像内部的指针表以 `0x100000` 为基址（`0x173C14` 这类都是绝对地址）。
+若按 TurboWriter 默认值填成 **`0x00180000`**，所有跳转整体错位 → 芯片跑飞 → D+ 无上拉 →
+表现成「不亮也不识别」。这是整个救砖过程**卡得最久、也唯一真正致命**的一个点。
+
+用 Make Rom 自己生成时注意：Image Name **≤ 8 字符**（先复制成短名 `v75.bin` 再选）；
+execute address **不带 `0x` 前缀**，填 `100000`；Type 选 **System Image**；start bank = `0`。
+
+### 救砖之后
+
+固件烧回后**开机动画是空的**（动画库区已被写过/清掉），重新烧一次动画即可。
+官方软件对源 GIF 有 **约 9.5 MB** 的体积限制（素材库限制，**不是协议限制**）。
+动画库区在 NOR `0x400000`，约 6.75 MB，设备端只存 JPEG（GIF 在 PC 端转码）；
+系统固件区 `0x000000–0x090000`（576 KB）与 `make_fix.bin` **逐字节一致**，官方烧动画时不会改动它。
+
+### 免责声明
+
+刷写固件有风险，可能导致设备无法使用、失去保修。工具包按「现状」提供，
+作者不对任何设备损坏或数据丢失负责。TurboWriter 及新唐 BSP 版权归 **Nuvoton** 所有
+（[OpenNuvoton](https://github.com/OpenNuvoton)），此处仅为分发便利而随包附带；
+`SPIFLASH ID.ini` 相对官方原版**只增加了一行** `A14018　　16384`。
