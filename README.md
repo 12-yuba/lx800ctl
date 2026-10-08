@@ -4,6 +4,10 @@ TCOMAS LX800 水冷屏（**480×480 圆形 LCD**，`VID:PID = 1A2C:151D`）的�
 
 协议来自对官方软件的 **USB/HID 抓包逆向**，非官方产品。软件由 **DeepSeek** 开发，部分功能由 **Gemini** 完成，AI 作品。
 
+> **📥 下载在这里 → [Releases 页面](https://github.com/12-yuba/lx800ctl/releases/latest)**
+> 这个仓库首页只放文档和图片，**安装包和救砖工具包都在 Releases 里**：
+> `LX800Controller_Setup_v1.1.0.exe`（主程序安装包）｜ `LX800_Rescue_Tool_v1.0.zip`（救砖工具包）
+
 ---
 
 ## 为什么做这个
